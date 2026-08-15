@@ -235,6 +235,7 @@ type frameManager struct {
 
 	// Switcher State
 	ctrlPressed              bool
+	workspaceTabsCtrlShown   bool
 	switcherMenu             *VMenu
 	WorkspaceTabMode         WorkspaceTabMode
 	WorkspaceCtrlTabMode     WorkspaceCtrlTabMode
@@ -316,6 +317,9 @@ func (fm *frameManager) ConfigureWorkspaceTabs(tabMode WorkspaceTabMode, ctrlTab
 	oldInset := fm.WorkspaceTopInset()
 	fm.WorkspaceTabMode = tabMode
 	fm.WorkspaceCtrlTabMode = ctrlTabMode
+	if tabMode != WorkspaceTabsOnCtrl {
+		fm.workspaceTabsCtrlShown = false
+	}
 	if oldInset != fm.WorkspaceTopInset() {
 		fm.ResizeAllScreens()
 	}
@@ -1127,7 +1131,7 @@ func (fm *frameManager) workspaceTabsVisible() bool {
 	case WorkspaceTabsMultiple:
 		return len(fm.Screens) > 1
 	case WorkspaceTabsOnCtrl:
-		return fm.ctrlPressed
+		return fm.ctrlPressed && fm.workspaceTabsCtrlShown
 	default:
 		return false
 	}
@@ -2180,8 +2184,11 @@ func (fm *frameManager) dispatchEvent(ev *vtinput.InputEvent, is_injected bool) 
 			ctrl = ev.KeyDown
 		}
 		fm.ctrlPressed = ctrl
-		if wasCtrlPressed != fm.ctrlPressed && fm.WorkspaceTabMode == WorkspaceTabsOnCtrl {
-			fm.Redraw()
+		if wasCtrlPressed && !fm.ctrlPressed && fm.workspaceTabsCtrlShown {
+			fm.workspaceTabsCtrlShown = false
+			if fm.WorkspaceTabMode == WorkspaceTabsOnCtrl {
+				fm.Redraw()
+			}
 		}
 
 		// Commit Switcher selection on Ctrl release
@@ -2414,6 +2421,10 @@ func (fm *frameManager) dispatchEvent(ev *vtinput.InputEvent, is_injected bool) 
 
 		// Workspace cycling (Ctrl+Tab / Ctrl+Shift+Tab).
 		if ev.VirtualKeyCode == vtinput.VK_TAB && (fm.ctrlPressed || fm.switcherMenu != nil) {
+			if fm.WorkspaceTabMode == WorkspaceTabsOnCtrl && fm.ctrlPressed && !fm.workspaceTabsCtrlShown {
+				fm.workspaceTabsCtrlShown = true
+				fm.Redraw()
+			}
 			shift := (ev.ControlKeyState & vtinput.ShiftPressed) != 0
 			cycled := false
 			if fm.WorkspaceCtrlTabMode == WorkspaceCtrlTabMenu || fm.WorkspaceTabMode == WorkspaceTabsNever {

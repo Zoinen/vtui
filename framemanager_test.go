@@ -2142,6 +2142,56 @@ func TestFrameManager_CtrlTabDirectAndMenuModes(t *testing.T) {
 		t.Fatalf("menu Ctrl+Tab active=%d menu=%v, want active=1 with menu", menu.ActiveIdx, menu.switcherMenu != nil)
 	}
 }
+
+func TestFrameManager_OnCtrlTabsAppearAfterCtrlTabUntilCtrlRelease(t *testing.T) {
+	scr := NewSilentScreenBuf()
+	scr.AllocBuf(80, 25)
+	fm := &frameManager{}
+	fm.Init(scr)
+	fm.Push(newMockFrame(0, 0, 80, 25, false))
+	fm.AddScreen(newMockFrame(0, 0, 80, 25, false))
+	fm.ConfigureWorkspaceTabs(WorkspaceTabsOnCtrl, WorkspaceCtrlTabDirect)
+
+	fm.dispatchEvent(&vtinput.InputEvent{
+		Type:            vtinput.KeyEventType,
+		KeyDown:         true,
+		VirtualKeyCode:  vtinput.VK_CONTROL,
+		ControlKeyState: vtinput.LeftCtrlPressed,
+	}, false)
+	if fm.workspaceTabsVisible() {
+		t.Fatal("pressing Ctrl alone should not reveal workspace tabs")
+	}
+
+	fm.dispatchEvent(&vtinput.InputEvent{
+		Type:            vtinput.KeyEventType,
+		KeyDown:         true,
+		VirtualKeyCode:  vtinput.VK_TAB,
+		ControlKeyState: vtinput.LeftCtrlPressed,
+	}, false)
+	if !fm.workspaceTabsVisible() {
+		t.Fatal("Ctrl+Tab should reveal workspace tabs")
+	}
+
+	fm.dispatchEvent(&vtinput.InputEvent{
+		Type:            vtinput.KeyEventType,
+		KeyDown:         true,
+		VirtualKeyCode:  vtinput.VK_TAB,
+		ControlKeyState: vtinput.LeftCtrlPressed | vtinput.ShiftPressed,
+	}, false)
+	if !fm.workspaceTabsVisible() {
+		t.Fatal("workspace tabs should remain visible for repeated cycling while Ctrl is held")
+	}
+
+	fm.dispatchEvent(&vtinput.InputEvent{
+		Type:           vtinput.KeyEventType,
+		KeyDown:        false,
+		VirtualKeyCode: vtinput.VK_CONTROL,
+	}, false)
+	if fm.workspaceTabsVisible() || fm.workspaceTabsCtrlShown {
+		t.Fatal("releasing Ctrl should hide workspace tabs and reset their transient state")
+	}
+}
+
 func TestFrameManager_CtrlTabNeverMode(t *testing.T) {
 	newManager := func() *frameManager {
 		scr := NewSilentScreenBuf()
