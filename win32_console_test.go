@@ -130,6 +130,55 @@ func TestConsoleWindowSizeStateOnlyResetsOnSizeChange(t *testing.T) {
 	}
 }
 
+func TestConsoleDamageBoundsAndTake(t *testing.T) {
+	var damage consoleDamage
+	damage.addIndex(2*80+17, 80)
+	damage.addIndex(3*80+11, 80)
+	damage.addIndex(1*80+29, 80)
+
+	got, ok := damage.take()
+	if !ok {
+		t.Fatal("take reported no damage")
+	}
+	want := (SmallRect{Left: 11, Top: 1, Right: 29, Bottom: 3})
+	if got != want {
+		t.Fatalf("damage rect = %+v, want %+v", got, want)
+	}
+	if _, ok := damage.take(); ok {
+		t.Fatal("take did not clear accumulated damage")
+	}
+}
+
+func TestConsoleDamageFullAndInvalidInputs(t *testing.T) {
+	var damage consoleDamage
+	damage.addIndex(-1, 80)
+	damage.addIndex(0, 0)
+	damage.addFull(0, 25)
+	if _, ok := damage.take(); ok {
+		t.Fatal("invalid dimensions unexpectedly produced damage")
+	}
+
+	damage.addFull(236, 55)
+	got, ok := damage.take()
+	if !ok {
+		t.Fatal("full frame did not produce damage")
+	}
+	want := (SmallRect{Left: 0, Top: 0, Right: 235, Bottom: 54})
+	if got != want {
+		t.Fatalf("full damage rect = %+v, want %+v", got, want)
+	}
+}
+
+func TestPackConsoleCoordPreservesNonZeroSource(t *testing.T) {
+	got := uint32(packConsoleCoord(17, 42))
+	if x := int16(got & 0xffff); x != 17 {
+		t.Fatalf("packed X = %d, want 17", x)
+	}
+	if y := int16(got >> 16); y != 42 {
+		t.Fatalf("packed Y = %d, want 42", y)
+	}
+}
+
 func TestDefaultConsoleBackend(t *testing.T) {
 	backend := DefaultConsoleBackend()
 	if backend != "winapi" && backend != "ansi" {

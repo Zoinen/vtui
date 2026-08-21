@@ -128,6 +128,75 @@ func (s *consoleWindowSizeState) needsReset(width, height int16) bool {
 	return true
 }
 
+// consoleDamage tracks the smallest rectangular portion of a console screen
+// buffer that contains every changed cell. WriteConsoleOutputW accepts a
+// source coordinate and a destination rectangle, so keeping the coordinates
+// in screen-buffer space lets the Win32 renderer publish a cursor-row change
+// without invalidating the entire console window.
+type consoleDamage struct {
+	left   int
+	top    int
+	right  int
+	bottom int
+	valid  bool
+}
+
+func (d *consoleDamage) addIndex(index, width int) {
+	if index < 0 || width <= 0 {
+		return
+	}
+	d.add(index%width, index/width)
+}
+
+func (d *consoleDamage) add(x, y int) {
+	if !d.valid {
+		d.left, d.top, d.right, d.bottom = x, y, x, y
+		d.valid = true
+		return
+	}
+	if x < d.left {
+		d.left = x
+	}
+	if x > d.right {
+		d.right = x
+	}
+	if y < d.top {
+		d.top = y
+	}
+	if y > d.bottom {
+		d.bottom = y
+	}
+}
+
+func (d *consoleDamage) addFull(width, height int) {
+	if width <= 0 || height <= 0 {
+		return
+	}
+	d.add(0, 0)
+	d.add(width-1, height-1)
+}
+
+func (d *consoleDamage) take() (SmallRect, bool) {
+	if !d.valid {
+		return SmallRect{}, false
+	}
+	rect := SmallRect{
+		Left:   int16(d.left),
+		Top:    int16(d.top),
+		Right:  int16(d.right),
+		Bottom: int16(d.bottom),
+	}
+	*d = consoleDamage{}
+	return rect, true
+}
+
+// packConsoleCoord converts a Win32 COORD into the uintptr form used by the
+// syscall trampoline. Both halves are explicitly converted through uint16 so
+// the representation remains correct for non-zero source coordinates.
+func packConsoleCoord(x, y int16) uintptr {
+	return uintptr(uint32(uint16(x)) | uint32(uint16(y))<<16)
+}
+
 func charInfoToWin32(ci CharInfo, activePal *[256]uint32) win32CharInfo {
 	var uc uint16
 	if ci.Char == 0 || ci.Char == WideCharFiller {

@@ -135,21 +135,25 @@ func hasVTConsoleSupportOS() bool {
 
 // Win32ConsoleRenderer implements SurfaceRenderer using the classic Windows Console API (WriteConsoleOutputW).
 type Win32ConsoleRenderer struct {
-	mu          sync.Mutex
-	parent      *ScreenBuf
-	hStdOut     syscall.Handle
-	hFarOut     syscall.Handle
-	consoleBuf  []win32CharInfo
-	lastCols    int
-	lastRows    int
-	lastTitle   string
-	cursorX     int
-	cursorY     int
-	cursorVis   bool
-	cursorShape CursorShape
-	activePal   *[256]uint32
-	forceRedraw bool
-	windowSize  consoleWindowSizeState
+	mu           sync.Mutex
+	parent       *ScreenBuf
+	hStdOut      syscall.Handle
+	hFarOut      syscall.Handle
+	consoleBuf   []win32CharInfo
+	lastCols     int
+	lastRows     int
+	lastTitle    string
+	cursorX      int
+	cursorY      int
+	cursorVis    bool
+	cursorShape  CursorShape
+	activePal    *[256]uint32
+	palette      [256]uint32
+	paletteSet   bool
+	paletteDirty bool
+	forceRedraw  bool
+	windowSize   consoleWindowSizeState
+	damage       consoleDamage
 }
 
 // NewWin32ConsoleRenderer creates a renderer using classic Win32 Console API with a dedicated screen buffer.
@@ -241,6 +245,18 @@ func (r *Win32ConsoleRenderer) Close() error {
 func (r *Win32ConsoleRenderer) SetPalette(pal *[256]uint32) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if pal == nil {
+		if r.paletteSet {
+			r.paletteDirty = true
+		}
+		r.paletteSet = false
+	} else {
+		if !r.paletteSet || r.palette != *pal {
+			r.palette = *pal
+			r.paletteSet = true
+			r.paletteDirty = true
+		}
+	}
 	r.activePal = pal
 }
 
@@ -279,9 +295,14 @@ func (r *Win32ConsoleRenderer) Render(buf, shadow []CharInfo, w, h int, forceRed
 		r.consoleBuf = make([]win32CharInfo, size)
 		r.lastCols = w
 		r.lastRows = h
+		// Damage from a previous logical buffer cannot be carried into a
+		// differently-sized source buffer.
+		r.damage = consoleDamage{}
 		forceRedraw = true
 	}
 
+	forceRedraw = forceRedraw || r.paletteDirty
+	r.paletteDirty = false
 	r.forceRedraw = forceRedraw
 	pal := r.activePal
 	if pal == nil && r.parent != nil {
@@ -292,9 +313,18 @@ func (r *Win32ConsoleRenderer) Render(buf, shadow []CharInfo, w, h int, forceRed
 		}
 	}
 
-	for i := 0; i < size; i++ {
-		if forceRedraw || buf[i] != shadow[i] {
+	if forceRedraw {
+		for i := 0; i < size; i++ {
 			r.consoleBuf[i] = charInfoToWin32(buf[i], pal)
+		}
+		r.damage.addFull(w, h)
+		return
+	}
+
+	for i := 0; i < size; i++ {
+		if buf[i] != shadow[i] {
+			r.consoleBuf[i] = charInfoToWin32(buf[i], pal)
+			r.damage.addIndex(i, w)
 		}
 	}
 }
@@ -319,22 +349,21 @@ func (r *Win32ConsoleRenderer) Flush() {
 		resetConsoleWindowPos(targetHandle, w, h)
 	}
 
-	bufSize := uintptr(uint32(uint16(w)) | (uint32(uint16(h)) << 16))
-	bufCoord := uintptr(0)
-	writeRegion := SmallRect{
-		Left:   0,
-		Top:    0,
-		Right:  w - 1,
-		Bottom: h - 1,
+	if writeRegion, ok := r.damage.take(); ok {
+		// consoleBuf remains a full-screen source buffer. The source origin must
+		// therefore match the destination rectangle's top-left corner; using
+		// (0,0) here would copy the wrong cells for every partial update away
+		// from the top-left of the screen.
+		bufSize := packConsoleCoord(w, h)
+		bufCoord := packConsoleCoord(writeRegion.Left, writeRegion.Top)
+		procWriteConsoleOutputW.Call(
+			uintptr(targetHandle),
+			uintptr(unsafe.Pointer(&r.consoleBuf[0])),
+			bufSize,
+			bufCoord,
+			uintptr(unsafe.Pointer(&writeRegion)),
+		)
 	}
-
-	procWriteConsoleOutputW.Call(
-		uintptr(targetHandle),
-		uintptr(unsafe.Pointer(&r.consoleBuf[0])),
-		bufSize,
-		bufCoord,
-		uintptr(unsafe.Pointer(&writeRegion)),
-	)
 
 	// Update cursor position and shape
 	if r.cursorVis && r.cursorX >= 0 && r.cursorX < int(w) && r.cursorY >= 0 && r.cursorY < int(h) {
