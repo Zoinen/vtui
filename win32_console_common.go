@@ -108,6 +108,26 @@ type win32CharInfo struct {
 	Attributes  uint16
 }
 
+// consoleWindowSizeState remembers the logical size for which the native
+// console viewport was last reset. SetConsoleWindowInfo emits a
+// WINDOW_BUFFER_SIZE_EVENT even when called with the current dimensions, so
+// callers must not use it as an unconditional part of every frame flush.
+type consoleWindowSizeState struct {
+	width  int16
+	height int16
+	set    bool
+}
+
+func (s *consoleWindowSizeState) needsReset(width, height int16) bool {
+	if s.set && s.width == width && s.height == height {
+		return false
+	}
+	s.width = width
+	s.height = height
+	s.set = true
+	return true
+}
+
 func charInfoToWin32(ci CharInfo, activePal *[256]uint32) win32CharInfo {
 	var uc uint16
 	if ci.Char == 0 || ci.Char == WideCharFiller {

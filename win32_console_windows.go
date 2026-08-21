@@ -149,6 +149,7 @@ type Win32ConsoleRenderer struct {
 	cursorShape CursorShape
 	activePal   *[256]uint32
 	forceRedraw bool
+	windowSize  consoleWindowSizeState
 }
 
 // NewWin32ConsoleRenderer creates a renderer using classic Win32 Console API with a dedicated screen buffer.
@@ -314,7 +315,9 @@ func (r *Win32ConsoleRenderer) Flush() {
 		targetHandle = r.hStdOut
 	}
 
-	resetConsoleWindowPos(targetHandle, w, h)
+	if r.windowSize.needsReset(w, h) {
+		resetConsoleWindowPos(targetHandle, w, h)
+	}
 
 	bufSize := uintptr(uint32(uint16(w)) | (uint32(uint16(h)) << 16))
 	bufCoord := uintptr(0)

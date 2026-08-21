@@ -99,6 +99,37 @@ func TestWin32ConsoleRenderer_ImplementsSurfaceRenderer(t *testing.T) {
 	var _ SurfaceRenderer = (*Win32ConsoleRenderer)(nil)
 }
 
+func TestConsoleWindowSizeStateOnlyResetsOnSizeChange(t *testing.T) {
+	var state consoleWindowSizeState
+	resizeCalls := 0
+	flush := func(width, height int16) {
+		if state.needsReset(width, height) {
+			resizeCalls++
+		}
+	}
+
+	flush(80, 25)
+	if resizeCalls != 1 {
+		t.Fatalf("initial flush issued %d viewport resets, want 1", resizeCalls)
+	}
+
+	flush(80, 25)
+	flush(80, 25)
+	if resizeCalls != 1 {
+		t.Fatalf("repeated same-size flushes issued %d viewport resets, want 1", resizeCalls)
+	}
+
+	flush(120, 40)
+	if resizeCalls != 2 {
+		t.Fatalf("changed-size flush issued %d viewport resets, want 2", resizeCalls)
+	}
+
+	flush(120, 40)
+	if resizeCalls != 2 {
+		t.Fatalf("repeated changed-size flush issued %d viewport resets, want 2", resizeCalls)
+	}
+}
+
 func TestDefaultConsoleBackend(t *testing.T) {
 	backend := DefaultConsoleBackend()
 	if backend != "winapi" && backend != "ansi" {
