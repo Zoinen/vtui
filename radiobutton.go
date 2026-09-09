@@ -41,6 +41,7 @@ func (rb *RadioButton) DisplayObject(scr *ScreenBuf) {
 
 	p := NewPainter(scr)
 	p.DrawString(rb.X1, rb.Y1, prefix, n)
+	p.DrawString(rb.X1, rb.Y1, string([]rune(prefix)[:3]), DialogIndicatorAttr(n, rb.IsFocused()))
 	p.DrawHighlightedText(rb.X1+runewidth.StringWidth(prefix), rb.Y1, rb.cleanText, rb.hotkeyPos, n, h)
 }
 
