@@ -2,10 +2,14 @@ package vtui
 
 import (
 	"github.com/unxed/vtinput"
+	"math"
 	"testing"
 )
 
 func gestureEvent(x, y int, down bool, buttons uint32, moved bool) *vtinput.InputEvent {
+	if x < math.MinInt16 || x > math.MaxInt16 || y < math.MinInt16 || y > math.MaxInt16 {
+		panic("test mouse coordinate exceeds the input protocol range")
+	}
 	e := &vtinput.InputEvent{Type: vtinput.MouseEventType, MouseX: int16(x), MouseY: int16(y), KeyDown: down, ButtonState: buttons}
 	if moved {
 		e.MouseEventFlags = vtinput.MouseMoved
