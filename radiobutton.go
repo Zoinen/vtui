@@ -59,7 +59,7 @@ func (rb *RadioButton) ProcessMouse(e *vtinput.InputEvent) bool {
 	if rb.IsDisabled() {
 		return false
 	}
-	if e.ButtonState == vtinput.FromLeft1stButtonPressed && e.KeyDown {
+	if e.ButtonState == vtinput.FromLeft1stButtonPressed && IsMousePress(e) {
 		rb.Select()
 		return true
 	}

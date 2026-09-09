@@ -70,7 +70,7 @@ func (cb *Checkbox) ProcessMouse(e *vtinput.InputEvent) bool {
 	if cb.IsDisabled() {
 		return false
 	}
-	if e.ButtonState == vtinput.FromLeft1stButtonPressed && e.KeyDown {
+	if e.ButtonState == vtinput.FromLeft1stButtonPressed && IsMousePress(e) && cb.HitTest(int(e.MouseX), int(e.MouseY)) {
 		cb.Toggle()
 		return true
 	}
